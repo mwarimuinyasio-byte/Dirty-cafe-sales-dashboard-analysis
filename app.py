@@ -9,41 +9,9 @@ import plotly.express as px
 # ============================================================
 
 st.set_page_config(
-    page_title="Financial Transactions Dashboard",
-    page_icon="",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-
-# ============================================================
-# CUSTOM CSS
-# ============================================================
-
-st.markdown(
-    """
-    <style>
-        .main {
-            padding-top: 1rem;
-        }
-
-        .metric-card {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 10px;
-            border: 1px solid #ddd;
-        }
-
-        h1 {
-            font-weight: 700;
-        }
-
-        h2 {
-            margin-top: 25px;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True
+    page_title="Dirty Cafe Sales Dashboard",
+    page_icon="☕",
+    layout="wide"
 )
 
 
@@ -51,74 +19,57 @@ st.markdown(
 # TITLE
 # ============================================================
 
-st.title("Financial Transactions Data Analysis")
-
-st.write(
-    "Interactive analysis, cleaning, filtering, statistics "
-    "and visualization of financial transaction data."
-)
+st.title("Dirty Cafe Sales Dashboard")
+st.write("Interactive sales data analysis and visualization dashboard.")
 
 
 # ============================================================
 # LOAD DATA
 # ============================================================
 
-FILE_NAME = "transactions.csv"
-
-
 @st.cache_data
 def load_data():
-
     try:
-        data = pd.read_csv(FILE_NAME)
-        return data
-
+        df = pd.read_csv("dirty_cafe_sales.csv")
     except FileNotFoundError:
-        return None
+        try:
+            df = pd.read_csv("dirty_cafe_sales.csv")
+        except FileNotFoundError:
+            st.error(
+                "The CSV file was not found. Make sure "
+                "'dirty_cafe_sales.csv' is in the same folder as app.py."
+            )
+            st.stop()
+
+    return df
 
 
-df_raw = load_data()
-
-
-if df_raw is None:
-
-    st.error(
-        f"Could not find '{FILE_NAME}'. "
-        "Make sure transactions.csv is in the same folder as app.py."
-    )
-
-    st.info(
-        "Your folder should contain: app.py, transactions.csv "
-        "and requirements.txt"
-    )
-
-    st.stop()
-
-
-# Keep original dataset
-df = df_raw.copy()
+df = load_data()
 
 
 # ============================================================
-# DATA CLEANING
+# CLEAN COLUMN NAMES
 # ============================================================
-
-# Standardize column names
 
 df.columns = (
     df.columns
     .str.strip()
     .str.lower()
-    .str.replace(" ", "_", regex=False)
+    .str.replace(" ", "_")
+    .str.replace("-", "_")
 )
 
 
-# Replace invalid values
+# ============================================================
+# REPLACE INVALID VALUES
+# ============================================================
 
 invalid_values = [
     "ERROR",
-    "UNKNOWN",
+    "Error",
     "error",
+    "UNKNOWN",
+    "Unknown",
     "unknown",
     "",
     " "
@@ -128,7 +79,7 @@ df = df.replace(invalid_values, np.nan)
 
 
 # ============================================================
-# CONVERT NUMERIC COLUMNS
+# DATA CLEANING
 # ============================================================
 
 numeric_columns = [
@@ -138,21 +89,14 @@ numeric_columns = [
 ]
 
 for column in numeric_columns:
-
     if column in df.columns:
-
         df[column] = pd.to_numeric(
             df[column],
             errors="coerce"
         )
 
 
-# ============================================================
-# CONVERT DATE COLUMN
-# ============================================================
-
 if "transaction_date" in df.columns:
-
     df["transaction_date"] = pd.to_datetime(
         df["transaction_date"],
         errors="coerce"
@@ -167,25 +111,21 @@ if (
     "quantity" in df.columns
     and "price_per_unit" in df.columns
 ):
-
     calculated_total = (
-        df["quantity"] *
-        df["price_per_unit"]
+        df["quantity"] * df["price_per_unit"]
     )
 
-    if "total_spent" in df.columns:
+    if "total_spent" not in df.columns:
+        df["total_spent"] = calculated_total
 
+    else:
         df["total_spent"] = df["total_spent"].fillna(
             calculated_total
         )
 
-    else:
-
-        df["total_spent"] = calculated_total
-
 
 # ============================================================
-# ADD DATE FEATURES
+# DATE FEATURES
 # ============================================================
 
 if "transaction_date" in df.columns:
@@ -208,261 +148,237 @@ if "transaction_date" in df.columns:
 
 
 # ============================================================
-# SIDEBAR
+# SIDEBAR FILTERS
 # ============================================================
 
 st.sidebar.header("Dashboard Filters")
 
 
-# ============================================================
-# ITEM FILTER
-# ============================================================
+filtered_df = df.copy()
 
+
+# Item filter
 if "item" in df.columns:
 
-    item_values = sorted(
+    items = sorted(
         df["item"]
         .dropna()
+        .astype(str)
         .unique()
         .tolist()
     )
 
     selected_items = st.sidebar.multiselect(
         "Select Item",
-        options=item_values,
-        default=item_values
+        items,
+        default=items
     )
 
-else:
+    if selected_items:
+        filtered_df = filtered_df[
+            filtered_df["item"]
+            .astype(str)
+            .isin(selected_items)
+        ]
 
-    selected_items = []
 
-
-# ============================================================
-# PAYMENT METHOD FILTER
-# ============================================================
-
+# Payment method filter
 if "payment_method" in df.columns:
 
-    payment_values = sorted(
+    payment_methods = sorted(
         df["payment_method"]
         .dropna()
+        .astype(str)
         .unique()
         .tolist()
     )
 
     selected_payment = st.sidebar.multiselect(
         "Payment Method",
-        options=payment_values,
-        default=payment_values
+        payment_methods,
+        default=payment_methods
     )
 
-else:
+    if selected_payment:
+        filtered_df = filtered_df[
+            filtered_df["payment_method"]
+            .astype(str)
+            .isin(selected_payment)
+        ]
 
-    selected_payment = []
 
-
-# ============================================================
-# LOCATION FILTER
-# ============================================================
-
+# Location filter
 if "location" in df.columns:
 
-    location_values = sorted(
+    locations = sorted(
         df["location"]
         .dropna()
+        .astype(str)
         .unique()
         .tolist()
     )
 
-    selected_location = st.sidebar.multiselect(
+    selected_locations = st.sidebar.multiselect(
         "Location",
-        options=location_values,
-        default=location_values
+        locations,
+        default=locations
     )
 
-else:
-
-    selected_location = []
-
-
-# ============================================================
-# DATE FILTER
-# ============================================================
-
-df_filtered = df.copy()
+    if selected_locations:
+        filtered_df = filtered_df[
+            filtered_df["location"]
+            .astype(str)
+            .isin(selected_locations)
+        ]
 
 
-if "transaction_date" in df.columns:
+# Date filter
+if (
+    "transaction_date" in df.columns
+    and df["transaction_date"].notna().any()
+):
 
-    valid_dates = df["transaction_date"].dropna()
+    min_date = df["transaction_date"].min().date()
+    max_date = df["transaction_date"].max().date()
 
-    if not valid_dates.empty:
+    selected_dates = st.sidebar.date_input(
+        "Transaction Date",
+        value=(min_date, max_date),
+        min_value=min_date,
+        max_value=max_date
+    )
 
-        min_date = valid_dates.min().date()
-        max_date = valid_dates.max().date()
+    if len(selected_dates) == 2:
 
-        selected_dates = st.sidebar.date_input(
-            "Transaction Date Range",
-            value=(min_date, max_date),
-            min_value=min_date,
-            max_value=max_date
+        start_date = pd.Timestamp(
+            selected_dates[0]
         )
 
-        if (
-            isinstance(selected_dates, tuple)
-            and len(selected_dates) == 2
-        ):
+        end_date = (
+            pd.Timestamp(selected_dates[1])
+            + pd.Timedelta(days=1)
+        )
 
-            start_date = pd.Timestamp(
-                selected_dates[0]
+        filtered_df = filtered_df[
+            (
+                filtered_df["transaction_date"]
+                >= start_date
             )
-
-            end_date = (
-                pd.Timestamp(selected_dates[1])
-                + pd.Timedelta(days=1)
+            &
+            (
+                filtered_df["transaction_date"]
+                < end_date
             )
-
-            df_filtered = df_filtered[
-                (
-                    df_filtered["transaction_date"]
-                    >= start_date
-                )
-                &
-                (
-                    df_filtered["transaction_date"]
-                    < end_date
-                )
-            ].copy()
+        ]
 
 
 # ============================================================
-# APPLY CATEGORICAL FILTERS
+# CHECK FILTERED DATA
 # ============================================================
 
-if (
-    "item" in df_filtered.columns
-    and selected_items
-):
-
-    df_filtered = df_filtered[
-        df_filtered["item"].isin(selected_items)
-    ]
-
-
-if (
-    "payment_method" in df_filtered.columns
-    and selected_payment
-):
-
-    df_filtered = df_filtered[
-        df_filtered["payment_method"].isin(
-            selected_payment
-        )
-    ]
-
-
-if (
-    "location" in df_filtered.columns
-    and selected_location
-):
-
-    df_filtered = df_filtered[
-        df_filtered["location"].isin(
-            selected_location
-        )
-    ]
-
-
-# ============================================================
-# CHECK FILTER RESULT
-# ============================================================
-
-if df_filtered.empty:
+if filtered_df.empty:
 
     st.warning(
-        "No transactions match the selected filters."
+        "No records match the selected filters."
     )
 
     st.stop()
 
 
 # ============================================================
-# DASHBOARD OVERVIEW
+# KPI SECTION
 # ============================================================
 
-st.header("Dashboard Overview")
-
-
-total_transactions = len(df_filtered)
-
-
-if "total_spent" in df_filtered.columns:
-
-    total_revenue = df_filtered[
-        "total_spent"
-    ].sum()
-
-    average_transaction = df_filtered[
-        "total_spent"
-    ].mean()
-
-else:
-
-    total_revenue = 0
-    average_transaction = 0
-
-
-if "quantity" in df_filtered.columns:
-
-    total_quantity = df_filtered[
-        "quantity"
-    ].sum()
-
-else:
-
-    total_quantity = 0
-
+st.subheader("Key Performance Indicators")
 
 col1, col2, col3, col4 = st.columns(4)
 
 
-col1.metric(
-    "Total Transactions",
-    f"{total_transactions:,}"
-)
+# Total transactions
+with col1:
+    st.metric(
+        "Total Transactions",
+        f"{len(filtered_df):,}"
+    )
 
 
-col2.metric(
-    "Total Revenue",
-    f"${total_revenue:,.2f}"
-)
+# Total revenue
+with col2:
+
+    if "total_spent" in filtered_df.columns:
+
+        total_revenue = (
+            filtered_df["total_spent"]
+            .sum()
+        )
+
+        st.metric(
+            "Total Revenue",
+            f"{total_revenue:,.2f}"
+        )
+
+    else:
+        st.metric(
+            "Total Revenue",
+            "N/A"
+        )
 
 
-col3.metric(
-    "Average Transaction",
-    f"${average_transaction:,.2f}"
-)
+# Average transaction
+with col3:
+
+    if "total_spent" in filtered_df.columns:
+
+        average_transaction = (
+            filtered_df["total_spent"]
+            .mean()
+        )
+
+        st.metric(
+            "Average Transaction",
+            f"{average_transaction:,.2f}"
+        )
+
+    else:
+        st.metric(
+            "Average Transaction",
+            "N/A"
+        )
 
 
-col4.metric(
-    "Total Quantity",
-    f"{total_quantity:,.0f}"
-)
+# Total quantity
+with col4:
+
+    if "quantity" in filtered_df.columns:
+
+        total_quantity = (
+            filtered_df["quantity"]
+            .sum()
+        )
+
+        st.metric(
+            "Total Quantity",
+            f"{total_quantity:,.0f}"
+        )
+
+    else:
+        st.metric(
+            "Total Quantity",
+            "N/A"
+        )
 
 
 # ============================================================
-# DATA INSPECTION
+# DATASET INFORMATION
 # ============================================================
 
-st.header("1. Data Inspection")
-
+st.subheader("Dataset Overview")
 
 tab1, tab2, tab3, tab4 = st.tabs(
     [
-        "Dataset",
-        "First Rows",
-        "Last Rows",
+        "Full Dataset",
+        "First 5 Rows",
+        "Last 10 Rows",
         "Data Information"
     ]
 )
@@ -470,149 +386,80 @@ tab1, tab2, tab3, tab4 = st.tabs(
 
 with tab1:
 
-    st.subheader("Filtered Dataset")
-
     st.dataframe(
-        df_filtered,
-        use_container_width=True,
-        height=400
+        filtered_df,
+        use_container_width=True
     )
 
 
 with tab2:
 
-    st.subheader("First 10 Rows")
-
     st.dataframe(
-        df_filtered.head(10),
+        filtered_df.head(),
         use_container_width=True
     )
 
 
 with tab3:
 
-    st.subheader("Last 10 Rows")
-
     st.dataframe(
-        df_filtered.tail(10),
+        filtered_df.tail(10),
         use_container_width=True
     )
 
 
 with tab4:
 
-    st.write(
-        "Number of Rows:",
-        df_filtered.shape[0]
-    )
+    info_df = pd.DataFrame({
+        "Column": filtered_df.columns,
+        "Data Type": [
+            str(dtype)
+            for dtype in filtered_df.dtypes
+        ],
+        "Missing Values": [
+            filtered_df[column].isna().sum()
+            for column in filtered_df.columns
+        ],
+        "Unique Values": [
+            filtered_df[column].nunique()
+            for column in filtered_df.columns
+        ]
+    })
 
-    st.write(
-        "Number of Columns:",
-        df_filtered.shape[1]
-    )
-
-    st.subheader("Column Names")
-
-    st.write(
-        list(df_filtered.columns)
+    st.dataframe(
+        info_df,
+        use_container_width=True
     )
 
 
 # ============================================================
-# MISSING VALUE ANALYSIS
+# MISSING VALUES
 # ============================================================
 
-st.header("2. Missing Value Analysis")
+st.subheader("Missing Value Analysis")
 
+missing_df = pd.DataFrame({
+    "Column": df.columns,
+    "Missing Values": [
+        df[column].isna().sum()
+        for column in df.columns
+    ]
+})
 
-missing_data = pd.DataFrame(
-    {
-        "Column": df.columns,
-        "Missing Values": df.isnull().sum().values
-    }
-)
-
-
-missing_data["Missing Percentage"] = (
-    missing_data["Missing Values"]
+missing_df["Missing Percentage"] = (
+    missing_df["Missing Values"]
     / len(df)
     * 100
 )
 
-
-missing_data = missing_data.sort_values(
+missing_df = missing_df.sort_values(
     "Missing Values",
     ascending=False
 )
 
-
 st.dataframe(
-    missing_data,
+    missing_df,
     use_container_width=True
-)
-
-
-fig_missing = px.bar(
-    missing_data,
-    x="Column",
-    y="Missing Values",
-    title="Missing Values by Column"
-)
-
-
-fig_missing.update_layout(
-    template="plotly_white",
-    xaxis_tickangle=-45
-)
-
-
-st.plotly_chart(
-    fig_missing,
-    use_container_width=True
-)
-
-
-# ============================================================
-# DATA CLEANING SUMMARY
-# ============================================================
-
-st.header("3. Data Cleaning Summary")
-
-
-original_rows = len(df_raw)
-cleaned_rows = len(df)
-
-missing_before = df_raw.isnull().sum().sum()
-missing_after = df.isnull().sum().sum()
-
-
-col1, col2, col3 = st.columns(3)
-
-
-col1.metric(
-    "Original Rows",
-    f"{original_rows:,}"
-)
-
-
-col2.metric(
-    "Missing Values Before Cleaning",
-    f"{missing_before:,}"
-)
-
-
-col3.metric(
-    "Missing Values After Cleaning",
-    f"{missing_after:,}"
-)
-
-
-st.write(
-    "The cleaning process standardizes column names, "
-    "converts invalid values to missing values, "
-    "converts numeric fields to numeric data types, "
-    "converts dates to datetime format and calculates "
-    "missing total spending values where possible."
 )
 
 
@@ -620,13 +467,11 @@ st.write(
 # DESCRIPTIVE STATISTICS
 # ============================================================
 
-st.header("4. Descriptive Statistics")
+st.subheader("Descriptive Statistics")
 
-
-numeric_df = df_filtered.select_dtypes(
+numeric_df = filtered_df.select_dtypes(
     include=np.number
 )
-
 
 if not numeric_df.empty:
 
@@ -643,141 +488,79 @@ else:
 
 
 # ============================================================
-# SORTING
+# ITEM ANALYSIS
 # ============================================================
 
-st.header("5. Sort Transactions")
+if "item" in filtered_df.columns:
 
+    st.subheader("Item Analysis")
 
-available_sort_columns = [
-    column
-    for column in [
-        "quantity",
-        "price_per_unit",
-        "total_spent"
-    ]
-    if column in df_filtered.columns
-]
-
-
-if available_sort_columns:
-
-    sort_option = st.selectbox(
-        "Sort by",
-        options=available_sort_columns
-    )
-
-
-    sort_order = st.radio(
-        "Sort Order",
-        [
-            "Descending",
-            "Ascending"
-        ],
-        horizontal=True
-    )
-
-
-    sorted_df = df_filtered.sort_values(
-        by=sort_option,
-        ascending=(
-            sort_order == "Ascending"
-        )
-    )
-
-
-    st.dataframe(
-        sorted_df.head(100),
-        use_container_width=True
-    )
-
-
-# ============================================================
-# PRODUCT ANALYSIS
-# ============================================================
-
-st.header("6. Product Analysis")
-
-
-if "item" in df_filtered.columns:
-
-    product_summary = (
-        df_filtered
-        .groupby("item", dropna=True)
-        .agg(
-            Transactions=("item", "count"),
-            Quantity=("quantity", "sum"),
-            Revenue=("total_spent", "sum"),
-            Average_Spending=("total_spent", "mean")
-        )
-        .reset_index()
+    item_sales = (
+        filtered_df
+        .groupby("item", as_index=False)
+        ["total_spent"]
+        .sum()
         .sort_values(
-            "Revenue",
+            "total_spent",
             ascending=False
         )
     )
 
-
-    st.dataframe(
-        product_summary,
-        use_container_width=True
-    )
-
-
-    fig_product = px.bar(
-        product_summary,
+    fig_item = px.bar(
+        item_sales,
         x="item",
-        y="Revenue",
-        title="Revenue by Product",
-        text_auto=".2s"
+        y="total_spent",
+        title="Revenue by Item",
+        labels={
+            "item": "Item",
+            "total_spent": "Total Revenue"
+        }
     )
 
-
-    fig_product.update_layout(
+    fig_item.update_layout(
         template="plotly_white"
     )
 
-
     st.plotly_chart(
-        fig_product,
+        fig_item,
         use_container_width=True
     )
 
 
 # ============================================================
-# QUANTITY BY PRODUCT
+# QUANTITY BY ITEM
 # ============================================================
 
 if (
-    "item" in df_filtered.columns
-    and "quantity" in df_filtered.columns
+    "item" in filtered_df.columns
+    and "quantity" in filtered_df.columns
 ):
 
-    quantity_summary = (
-        df_filtered
-        .groupby("item")["quantity"]
+    quantity_by_item = (
+        filtered_df
+        .groupby("item", as_index=False)
+        ["quantity"]
         .sum()
-        .reset_index()
         .sort_values(
             "quantity",
             ascending=False
         )
     )
 
-
     fig_quantity = px.bar(
-        quantity_summary,
+        quantity_by_item,
         x="item",
         y="quantity",
-        title="Quantity Sold by Product",
-        text_auto=True
+        title="Quantity Sold by Item",
+        labels={
+            "item": "Item",
+            "quantity": "Quantity Sold"
+        }
     )
-
 
     fig_quantity.update_layout(
         template="plotly_white"
     )
-
 
     st.plotly_chart(
         fig_quantity,
@@ -789,112 +572,72 @@ if (
 # PAYMENT METHOD ANALYSIS
 # ============================================================
 
-st.header("7. Payment Method Analysis")
+if "payment_method" in filtered_df.columns:
 
+    st.subheader("Payment Method Analysis")
 
-if "payment_method" in df_filtered.columns:
-
-    payment_summary = (
-        df_filtered
-        .groupby("payment_method")
-        .agg(
-            Transactions=("payment_method", "count"),
-            Revenue=("total_spent", "sum")
-        )
+    payment_counts = (
+        filtered_df["payment_method"]
+        .value_counts()
         .reset_index()
     )
 
+    payment_counts.columns = [
+        "payment_method",
+        "count"
+    ]
 
-    col1, col2 = st.columns(2)
+    fig_payment = px.pie(
+        payment_counts,
+        names="payment_method",
+        values="count",
+        title="Transactions by Payment Method",
+        hole=0.3
+    )
 
+    fig_payment.update_layout(
+        template="plotly_white"
+    )
 
-    with col1:
-
-        fig_payment = px.bar(
-            payment_summary,
-            x="payment_method",
-            y="Transactions",
-            title="Transactions by Payment Method",
-            text_auto=True
-        )
-
-
-        fig_payment.update_layout(
-            template="plotly_white"
-        )
-
-
-        st.plotly_chart(
-            fig_payment,
-            use_container_width=True
-        )
-
-
-    with col2:
-
-        fig_payment_pie = px.pie(
-            payment_summary,
-            names="payment_method",
-            values="Revenue",
-            title="Revenue Distribution by Payment Method"
-        )
-
-
-        fig_payment_pie.update_layout(
-            template="plotly_white"
-        )
-
-
-        st.plotly_chart(
-            fig_payment_pie,
-            use_container_width=True
-        )
+    st.plotly_chart(
+        fig_payment,
+        use_container_width=True
+    )
 
 
 # ============================================================
 # LOCATION ANALYSIS
 # ============================================================
 
-st.header("8. Location Analysis")
+if "location" in filtered_df.columns:
 
+    st.subheader("Location Analysis")
 
-if "location" in df_filtered.columns:
-
-    location_summary = (
-        df_filtered
-        .groupby("location")
-        .agg(
-            Transactions=("location", "count"),
-            Revenue=("total_spent", "sum"),
-            Quantity=("quantity", "sum")
-        )
-        .reset_index()
+    location_sales = (
+        filtered_df
+        .groupby("location", as_index=False)
+        ["total_spent"]
+        .sum()
         .sort_values(
-            "Revenue",
+            "total_spent",
             ascending=False
         )
     )
 
-
-    st.dataframe(
-        location_summary,
-        use_container_width=True
-    )
-
-
     fig_location = px.bar(
-        location_summary,
+        location_sales,
         x="location",
-        y="Revenue",
+        y="total_spent",
         title="Revenue by Location",
-        text_auto=".2s"
+        labels={
+            "location": "Location",
+            "total_spent": "Revenue"
+        }
     )
-
 
     fig_location.update_layout(
         template="plotly_white"
     )
-
 
     st.plotly_chart(
         fig_location,
@@ -903,154 +646,140 @@ if "location" in df_filtered.columns:
 
 
 # ============================================================
-# TIME SERIES ANALYSIS
+# MONTHLY SALES TREND
 # ============================================================
 
-st.header("9. Time Series Analysis")
+if (
+    "transaction_date" in filtered_df.columns
+    and "total_spent" in filtered_df.columns
+):
 
+    st.subheader("Monthly Sales Trend")
 
-if "transaction_date" in df_filtered.columns:
-
-    monthly_data = (
-        df_filtered
+    monthly_sales = (
+        filtered_df
         .dropna(subset=["transaction_date"])
         .set_index("transaction_date")
+        ["total_spent"]
         .resample("ME")
-        .agg(
-            Transactions=("total_spent", "count"),
-            Revenue=("total_spent", "sum")
-        )
+        .sum()
         .reset_index()
     )
 
+    fig_monthly = px.line(
+        monthly_sales,
+        x="transaction_date",
+        y="total_spent",
+        markers=True,
+        title="Monthly Revenue Trend",
+        labels={
+            "transaction_date": "Month",
+            "total_spent": "Revenue"
+        }
+    )
 
-    if not monthly_data.empty:
+    fig_monthly.update_layout(
+        template="plotly_white"
+    )
 
-        fig_monthly = px.line(
-            monthly_data,
-            x="transaction_date",
-            y="Revenue",
-            markers=True,
-            title="Monthly Revenue Trend"
-        )
-
-
-        fig_monthly.update_layout(
-            template="plotly_white"
-        )
-
-
-        st.plotly_chart(
-            fig_monthly,
-            use_container_width=True
-        )
-
-
-        fig_transactions = px.line(
-            monthly_data,
-            x="transaction_date",
-            y="Transactions",
-            markers=True,
-            title="Monthly Transaction Trend"
-        )
-
-
-        fig_transactions.update_layout(
-            template="plotly_white"
-        )
-
-
-        st.plotly_chart(
-            fig_transactions,
-            use_container_width=True
-        )
+    st.plotly_chart(
+        fig_monthly,
+        use_container_width=True
+    )
 
 
 # ============================================================
-# DAILY ANALYSIS
+# DAILY SALES
 # ============================================================
 
-if "transaction_date" in df_filtered.columns:
+if (
+    "transaction_date" in filtered_df.columns
+    and "total_spent" in filtered_df.columns
+):
 
-    daily_data = (
-        df_filtered
+    daily_sales = (
+        filtered_df
         .dropna(subset=["transaction_date"])
-        .groupby("transaction_date")
-        .agg(
-            Revenue=("total_spent", "sum"),
-            Transactions=("total_spent", "count")
-        )
+        .groupby(
+            filtered_df[
+                "transaction_date"
+            ].dt.date
+        )["total_spent"]
+        .sum()
         .reset_index()
     )
 
+    daily_sales.columns = [
+        "date",
+        "total_spent"
+    ]
 
-    if not daily_data.empty:
+    fig_daily = px.line(
+        daily_sales,
+        x="date",
+        y="total_spent",
+        title="Daily Revenue Trend",
+        labels={
+            "date": "Date",
+            "total_spent": "Revenue"
+        }
+    )
 
-        fig_daily = px.line(
-            daily_data,
-            x="transaction_date",
-            y="Revenue",
-            title="Daily Revenue Trend"
-        )
+    fig_daily.update_layout(
+        template="plotly_white"
+    )
 
-
-        fig_daily.update_layout(
-            template="plotly_white"
-        )
-
-
-        st.plotly_chart(
-            fig_daily,
-            use_container_width=True
-        )
+    st.plotly_chart(
+        fig_daily,
+        use_container_width=True
+    )
 
 
 # ============================================================
-# TRANSACTION AMOUNT ANALYSIS
+# TRANSACTION AMOUNT DISTRIBUTION
 # ============================================================
 
-st.header("10. Transaction Amount Analysis")
+if "total_spent" in filtered_df.columns:
 
-
-if "total_spent" in df_filtered.columns:
+    st.subheader("Transaction Amount Analysis")
 
     col1, col2 = st.columns(2)
-
 
     with col1:
 
         fig_hist = px.histogram(
-            df_filtered,
+            filtered_df,
             x="total_spent",
-            nbins=30,
-            title="Distribution of Transaction Amounts"
+            nbins=40,
+            title="Transaction Amount Distribution",
+            labels={
+                "total_spent": "Transaction Amount"
+            }
         )
-
 
         fig_hist.update_layout(
             template="plotly_white"
         )
-
 
         st.plotly_chart(
             fig_hist,
             use_container_width=True
         )
 
-
     with col2:
 
         fig_box = px.box(
-            df_filtered,
+            filtered_df,
             y="total_spent",
-            title="Transaction Amount Box Plot"
+            title="Transaction Amount Box Plot",
+            labels={
+                "total_spent": "Transaction Amount"
+            }
         )
-
 
         fig_box.update_layout(
             template="plotly_white"
         )
-
 
         st.plotly_chart(
             fig_box,
@@ -1059,55 +788,29 @@ if "total_spent" in df_filtered.columns:
 
 
 # ============================================================
-# QUANTITY VS TOTAL SPENDING
+# QUANTITY VS SPENDING
 # ============================================================
 
-st.header("11. Quantity vs Total Spending")
-
-
 if (
-    "quantity" in df_filtered.columns
-    and "total_spent" in df_filtered.columns
+    "quantity" in filtered_df.columns
+    and "total_spent" in filtered_df.columns
 ):
 
-    scatter_df = df_filtered.dropna(
-        subset=[
-            "quantity",
-            "total_spent"
-        ]
-    )
-
-
-    hover_columns = [
-        column
-        for column in [
-            "transaction_id",
-            "item",
-            "payment_method",
-            "location"
-        ]
-        if column in scatter_df.columns
-    ]
-
-
     fig_scatter = px.scatter(
-        scatter_df,
+        filtered_df,
         x="quantity",
         y="total_spent",
-        color=(
-            "item"
-            if "item" in scatter_df.columns
-            else None
-        ),
-        hover_data=hover_columns,
-        title="Quantity vs Total Spending"
+        title="Quantity vs Total Spending",
+        labels={
+            "quantity": "Quantity",
+            "total_spent": "Total Spending"
+        },
+        trendline="ols"
     )
-
 
     fig_scatter.update_layout(
         template="plotly_white"
     )
-
 
     st.plotly_chart(
         fig_scatter,
@@ -1120,35 +823,24 @@ if (
 # ============================================================
 
 if (
-    "price_per_unit" in df_filtered.columns
-    and "quantity" in df_filtered.columns
+    "price_per_unit" in filtered_df.columns
+    and "quantity" in filtered_df.columns
 ):
 
-    price_quantity_df = df_filtered.dropna(
-        subset=[
-            "price_per_unit",
-            "quantity"
-        ]
-    )
-
-
     fig_price_quantity = px.scatter(
-        price_quantity_df,
+        filtered_df,
         x="price_per_unit",
         y="quantity",
-        color=(
-            "item"
-            if "item" in price_quantity_df.columns
-            else None
-        ),
-        title="Price Per Unit vs Quantity"
+        title="Price per Unit vs Quantity",
+        labels={
+            "price_per_unit": "Price per Unit",
+            "quantity": "Quantity"
+        }
     )
-
 
     fig_price_quantity.update_layout(
         template="plotly_white"
     )
-
 
     st.plotly_chart(
         fig_price_quantity,
@@ -1160,49 +852,29 @@ if (
 # CORRELATION ANALYSIS
 # ============================================================
 
-st.header("12. Correlation Analysis")
+st.subheader("Correlation Analysis")
 
+correlation_df = (
+    filtered_df
+    .select_dtypes(include=np.number)
+    .corr()
+)
 
-correlation_columns = [
-    column
-    for column in [
-        "quantity",
-        "price_per_unit",
-        "total_spent"
-    ]
-    if column in df_filtered.columns
-]
-
-
-if len(correlation_columns) >= 2:
-
-    correlation_matrix = (
-        df_filtered[correlation_columns]
-        .corr()
-    )
-
+if not correlation_df.empty:
 
     fig_corr = px.imshow(
-        correlation_matrix,
-        text_auto=".2f",
+        correlation_df,
+        text_auto=True,
         aspect="auto",
         title="Correlation Heatmap"
     )
-
 
     fig_corr.update_layout(
         template="plotly_white"
     )
 
-
     st.plotly_chart(
         fig_corr,
-        use_container_width=True
-    )
-
-
-    st.dataframe(
-        correlation_matrix,
         use_container_width=True
     )
 
@@ -1211,107 +883,77 @@ if len(correlation_columns) >= 2:
 # OUTLIER ANALYSIS
 # ============================================================
 
-st.header("13. Outlier Analysis")
+if "total_spent" in filtered_df.columns:
 
+    st.subheader("Outlier Analysis")
 
-if "total_spent" in df_filtered.columns:
+    q1 = filtered_df[
+        "total_spent"
+    ].quantile(0.25)
 
-    outlier_data = df_filtered.dropna(
-        subset=["total_spent"]
-    ).copy()
+    q3 = filtered_df[
+        "total_spent"
+    ].quantile(0.75)
 
+    iqr = q3 - q1
 
-    if not outlier_data.empty:
+    lower_limit = q1 - 1.5 * iqr
+    upper_limit = q3 + 1.5 * iqr
 
-        Q1 = outlier_data[
-            "total_spent"
-        ].quantile(0.25)
+    outliers = filtered_df[
+        (
+            filtered_df["total_spent"]
+            < lower_limit
+        )
+        |
+        (
+            filtered_df["total_spent"]
+            > upper_limit
+        )
+    ]
 
+    col1, col2, col3 = st.columns(3)
 
-        Q3 = outlier_data[
-            "total_spent"
-        ].quantile(0.75)
-
-
-        IQR = Q3 - Q1
-
-
-        lower_limit = Q1 - (1.5 * IQR)
-
-        upper_limit = Q3 + (1.5 * IQR)
-
-
-        outliers = outlier_data[
-            (
-                outlier_data["total_spent"]
-                < lower_limit
-            )
-            |
-            (
-                outlier_data["total_spent"]
-                > upper_limit
-            )
-        ]
-
-
-        col1, col2, col3 = st.columns(3)
-
-
-        col1.metric(
+    with col1:
+        st.metric(
             "Q1",
-            f"${Q1:,.2f}"
+            f"{q1:,.2f}"
         )
 
-
-        col2.metric(
+    with col2:
+        st.metric(
             "Q3",
-            f"${Q3:,.2f}"
+            f"{q3:,.2f}"
         )
 
-
-        col3.metric(
+    with col3:
+        st.metric(
             "Number of Outliers",
             f"{len(outliers):,}"
         )
 
-
-        st.write(
-            f"Lower Bound: ${lower_limit:,.2f}"
-        )
-
-
-        st.write(
-            f"Upper Bound: ${upper_limit:,.2f}"
-        )
-
-
-        st.subheader("Detected Outliers")
-
-
-        st.dataframe(
-            outliers,
-            use_container_width=True
-        )
+    st.dataframe(
+        outliers,
+        use_container_width=True
+    )
 
 
 # ============================================================
-# TOP TRANSACTIONS
+# TOP 10 TRANSACTIONS
 # ============================================================
 
-st.header("14. Top Transactions")
+if "total_spent" in filtered_df.columns:
 
-
-if "total_spent" in df_filtered.columns:
+    st.subheader("Top 10 Highest Transactions")
 
     top_transactions = (
-        df_filtered
+        filtered_df
         .sort_values(
             "total_spent",
             ascending=False
         )
-        .head(20)
+        .head(10)
     )
-
 
     st.dataframe(
         top_transactions,
@@ -1323,69 +965,69 @@ if "total_spent" in df_filtered.columns:
 # SUMMARY BY ITEM
 # ============================================================
 
-st.header("15. Summary by Item")
-
-
 if (
-    "item" in df_filtered.columns
-    and "quantity" in df_filtered.columns
-    and "total_spent" in df_filtered.columns
+    "item" in filtered_df.columns
+    and "total_spent" in filtered_df.columns
 ):
 
-    item_analysis = (
-        df_filtered
+    st.subheader("Item Summary")
+
+    item_summary = (
+        filtered_df
         .groupby("item")
         .agg(
-            Total_Transactions=("item", "count"),
-            Total_Quantity=("quantity", "sum"),
-            Total_Revenue=("total_spent", "sum"),
-            Average_Revenue=("total_spent", "mean"),
-            Maximum_Transaction=("total_spent", "max"),
-            Minimum_Transaction=("total_spent", "min")
+            Total_Revenue=(
+                "total_spent",
+                "sum"
+            ),
+            Average_Revenue=(
+                "total_spent",
+                "mean"
+            ),
+            Number_of_Transactions=(
+                "total_spent",
+                "count"
+            )
         )
         .reset_index()
+        .sort_values(
+            "Total_Revenue",
+            ascending=False
+        )
     )
 
-
     st.dataframe(
-        item_analysis,
+        item_summary,
         use_container_width=True
     )
 
 
 # ============================================================
-# DOWNLOAD FILTERED DATA
+# DOWNLOAD DATA
 # ============================================================
 
-st.header("16. Download Data")
+st.subheader("Download Data")
 
-
-csv_data = df_filtered.to_csv(
+csv_data = filtered_df.to_csv(
     index=False
 ).encode("utf-8")
 
-
 st.download_button(
-    label="Download Filtered Dataset",
+    label="Download Filtered Data",
     data=csv_data,
-    file_name="filtered_transactions.csv",
+    file_name="dirty_cafe_sales_filtered.csv",
     mime="text/csv"
 )
 
 
-# ============================================================
-# DOWNLOAD ORIGINAL DATA
-# ============================================================
-
-original_csv = df_raw.to_csv(
+original_csv = df.to_csv(
     index=False
 ).encode("utf-8")
 
-
 st.download_button(
-    label="Download Original Dataset",
+    label="Download Cleaned Dataset",
     data=original_csv,
-    file_name="original_transactions.csv",
+    file_name="dirty_cafe_sales_cleaned.csv",
     mime="text/csv"
 )
 
@@ -1394,8 +1036,9 @@ st.download_button(
 # FOOTER
 # ============================================================
 
-st.divider()
+st.markdown("---")
 
 st.write(
-    "Financial Transactions Data Analysis Dashboard"
+    "Dirty Cafe Sales Dashboard | "
+    "Built with Python, Pandas, NumPy, Streamlit and Plotly"
 )
