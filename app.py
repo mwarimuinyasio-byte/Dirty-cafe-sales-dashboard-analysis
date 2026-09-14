@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+from pathlib import Path
 
 
 # ============================================================
@@ -10,6 +11,7 @@ import plotly.express as px
 
 st.set_page_config(
     page_title="Dirty Cafe Sales Dashboard",
+    page_icon="☕",
     layout="wide"
 )
 
@@ -19,31 +21,56 @@ st.set_page_config(
 # ============================================================
 
 st.title("Dirty Cafe Sales Dashboard")
-st.write("Interactive sales data analysis and visualization dashboard.")
+st.write(
+    "Interactive sales data analysis and visualization dashboard."
+)
 
 
 # ============================================================
 # LOAD DATA
 # ============================================================
 
+BASE_DIR = Path(__file__).resolve().parent
+DATA_FILE = BASE_DIR / "dirty_cafe_sales.csv"
+
+
 @st.cache_data
 def load_data():
-    try:
-        df = pd.read_csv("dirty_cafe_sales.csv")
-    except FileNotFoundError:
-        try:
-            df = pd.read_csv("dirty_cafe_sales.csv")
-        except FileNotFoundError:
-            st.error(
-                "The CSV file was not found. Make sure "
-                "'dirty_cafe_sales.csv' is in the same folder as app.py."
-            )
-            st.stop()
 
-    return df
+    if not DATA_FILE.exists():
+
+        csv_files = list(BASE_DIR.glob("*.csv"))
+
+        if not csv_files:
+            return None
+
+        return pd.read_csv(csv_files[0])
+
+    return pd.read_csv(DATA_FILE)
 
 
-df = load_data()
+try:
+
+    df = load_data()
+
+except Exception as e:
+
+    st.error(f"Error loading the dataset: {e}")
+    st.stop()
+
+
+if df is None:
+
+    st.error(
+        "The CSV file was not found."
+    )
+
+    st.write(
+        "Make sure 'dirty_cafe_sales.csv' is in the same "
+        "folder as app.py."
+    )
+
+    st.stop()
 
 
 # ============================================================
@@ -54,8 +81,9 @@ df.columns = (
     df.columns
     .str.strip()
     .str.lower()
-    .str.replace(" ", "_")
-    .str.replace("-", "_")
+    .str.replace(" ", "_", regex=False)
+    .str.replace("-", "_", regex=False)
+    .str.replace(r"[^\w_]", "", regex=True)
 )
 
 
@@ -71,7 +99,12 @@ invalid_values = [
     "Unknown",
     "unknown",
     "",
-    " "
+    " ",
+    "NA",
+    "N/A",
+    "null",
+    "NULL",
+    "None"
 ]
 
 df = df.replace(invalid_values, np.nan)
@@ -88,14 +121,29 @@ numeric_columns = [
 ]
 
 for column in numeric_columns:
+
     if column in df.columns:
+
+        df[column] = (
+            df[column]
+            .astype(str)
+            .str.replace(",", "", regex=False)
+            .str.replace("$", "", regex=False)
+            .str.strip()
+        )
+
         df[column] = pd.to_numeric(
             df[column],
             errors="coerce"
         )
 
 
+# ============================================================
+# DATE CLEANING
+# ============================================================
+
 if "transaction_date" in df.columns:
+
     df["transaction_date"] = pd.to_datetime(
         df["transaction_date"],
         errors="coerce"
@@ -110,16 +158,21 @@ if (
     "quantity" in df.columns
     and "price_per_unit" in df.columns
 ):
+
     calculated_total = (
-        df["quantity"] * df["price_per_unit"]
+        df["quantity"] *
+        df["price_per_unit"]
     )
 
     if "total_spent" not in df.columns:
+
         df["total_spent"] = calculated_total
 
     else:
-        df["total_spent"] = df["total_spent"].fillna(
-            calculated_total
+
+        df["total_spent"] = (
+            df["total_spent"]
+            .fillna(calculated_total)
         )
 
 
@@ -129,20 +182,24 @@ if (
 
 if "transaction_date" in df.columns:
 
-    df["year"] = df["transaction_date"].dt.year
-
-    df["month"] = df["transaction_date"].dt.month
-
-    df["month_name"] = (
-        df["transaction_date"]
-        .dt.month_name()
+    df["year"] = (
+        df["transaction_date"].dt.year
     )
 
-    df["day"] = df["transaction_date"].dt.day
+    df["month"] = (
+        df["transaction_date"].dt.month
+    )
+
+    df["month_name"] = (
+        df["transaction_date"].dt.month_name()
+    )
+
+    df["day"] = (
+        df["transaction_date"].dt.day
+    )
 
     df["day_name"] = (
-        df["transaction_date"]
-        .dt.day_name()
+        df["transaction_date"].dt.day_name()
     )
 
 
@@ -152,11 +209,13 @@ if "transaction_date" in df.columns:
 
 st.sidebar.header("Dashboard Filters")
 
-
 filtered_df = df.copy()
 
 
-# Item filter
+# ============================================================
+# ITEM FILTER
+# ============================================================
+
 if "item" in df.columns:
 
     items = sorted(
@@ -169,11 +228,12 @@ if "item" in df.columns:
 
     selected_items = st.sidebar.multiselect(
         "Select Item",
-        items,
+        options=items,
         default=items
     )
 
     if selected_items:
+
         filtered_df = filtered_df[
             filtered_df["item"]
             .astype(str)
@@ -181,7 +241,10 @@ if "item" in df.columns:
         ]
 
 
-# Payment method filter
+# ============================================================
+# PAYMENT METHOD FILTER
+# ============================================================
+
 if "payment_method" in df.columns:
 
     payment_methods = sorted(
@@ -194,11 +257,12 @@ if "payment_method" in df.columns:
 
     selected_payment = st.sidebar.multiselect(
         "Payment Method",
-        payment_methods,
+        options=payment_methods,
         default=payment_methods
     )
 
     if selected_payment:
+
         filtered_df = filtered_df[
             filtered_df["payment_method"]
             .astype(str)
@@ -206,7 +270,10 @@ if "payment_method" in df.columns:
         ]
 
 
-# Location filter
+# ============================================================
+# LOCATION FILTER
+# ============================================================
+
 if "location" in df.columns:
 
     locations = sorted(
@@ -219,11 +286,12 @@ if "location" in df.columns:
 
     selected_locations = st.sidebar.multiselect(
         "Location",
-        locations,
+        options=locations,
         default=locations
     )
 
     if selected_locations:
+
         filtered_df = filtered_df[
             filtered_df["location"]
             .astype(str)
@@ -231,14 +299,28 @@ if "location" in df.columns:
         ]
 
 
-# Date filter
+# ============================================================
+# DATE FILTER
+# ============================================================
+
 if (
     "transaction_date" in df.columns
     and df["transaction_date"].notna().any()
 ):
 
-    min_date = df["transaction_date"].min().date()
-    max_date = df["transaction_date"].max().date()
+    min_date = (
+        df["transaction_date"]
+        .dropna()
+        .min()
+        .date()
+    )
+
+    max_date = (
+        df["transaction_date"]
+        .dropna()
+        .max()
+        .date()
+    )
 
     selected_dates = st.sidebar.date_input(
         "Transaction Date",
@@ -294,7 +376,9 @@ col1, col2, col3, col4 = st.columns(4)
 
 
 # Total transactions
+
 with col1:
+
     st.metric(
         "Total Transactions",
         f"{len(filtered_df):,}"
@@ -302,6 +386,7 @@ with col1:
 
 
 # Total revenue
+
 with col2:
 
     if "total_spent" in filtered_df.columns:
@@ -317,6 +402,7 @@ with col2:
         )
 
     else:
+
         st.metric(
             "Total Revenue",
             "N/A"
@@ -324,6 +410,7 @@ with col2:
 
 
 # Average transaction
+
 with col3:
 
     if "total_spent" in filtered_df.columns:
@@ -339,6 +426,7 @@ with col3:
         )
 
     else:
+
         st.metric(
             "Average Transaction",
             "N/A"
@@ -346,6 +434,7 @@ with col3:
 
 
 # Total quantity
+
 with col4:
 
     if "quantity" in filtered_df.columns:
@@ -361,6 +450,7 @@ with col4:
         )
 
     else:
+
         st.metric(
             "Total Quantity",
             "N/A"
@@ -368,7 +458,7 @@ with col4:
 
 
 # ============================================================
-# DATASET INFORMATION
+# DATASET OVERVIEW
 # ============================================================
 
 st.subheader("Dataset Overview")
@@ -410,19 +500,24 @@ with tab3:
 with tab4:
 
     info_df = pd.DataFrame({
+
         "Column": filtered_df.columns,
+
         "Data Type": [
             str(dtype)
             for dtype in filtered_df.dtypes
         ],
+
         "Missing Values": [
             filtered_df[column].isna().sum()
             for column in filtered_df.columns
         ],
+
         "Unique Values": [
             filtered_df[column].nunique()
             for column in filtered_df.columns
         ]
+
     })
 
     st.dataframe(
@@ -432,17 +527,20 @@ with tab4:
 
 
 # ============================================================
-# MISSING VALUES
+# MISSING VALUE ANALYSIS
 # ============================================================
 
 st.subheader("Missing Value Analysis")
 
 missing_df = pd.DataFrame({
+
     "Column": df.columns,
+
     "Missing Values": [
         df[column].isna().sum()
         for column in df.columns
     ]
+
 })
 
 missing_df["Missing Percentage"] = (
@@ -490,7 +588,10 @@ else:
 # ITEM ANALYSIS
 # ============================================================
 
-if "item" in filtered_df.columns:
+if (
+    "item" in filtered_df.columns
+    and "total_spent" in filtered_df.columns
+):
 
     st.subheader("Item Analysis")
 
@@ -513,11 +614,13 @@ if "item" in filtered_df.columns:
         labels={
             "item": "Item",
             "total_spent": "Total Revenue"
-        }
+        },
+        text_auto=".2f"
     )
 
     fig_item.update_layout(
-        template="plotly_white"
+        template="plotly_white",
+        xaxis_tickangle=-45
     )
 
     st.plotly_chart(
@@ -534,6 +637,8 @@ if (
     "item" in filtered_df.columns
     and "quantity" in filtered_df.columns
 ):
+
+    st.subheader("Quantity Sold by Item")
 
     quantity_by_item = (
         filtered_df
@@ -554,11 +659,13 @@ if (
         labels={
             "item": "Item",
             "quantity": "Quantity Sold"
-        }
+        },
+        text_auto=".2f"
     )
 
     fig_quantity.update_layout(
-        template="plotly_white"
+        template="plotly_white",
+        xaxis_tickangle=-45
     )
 
     st.plotly_chart(
@@ -608,7 +715,10 @@ if "payment_method" in filtered_df.columns:
 # LOCATION ANALYSIS
 # ============================================================
 
-if "location" in filtered_df.columns:
+if (
+    "location" in filtered_df.columns
+    and "total_spent" in filtered_df.columns
+):
 
     st.subheader("Location Analysis")
 
@@ -631,11 +741,13 @@ if "location" in filtered_df.columns:
         labels={
             "location": "Location",
             "total_spent": "Revenue"
-        }
+        },
+        text_auto=".2f"
     )
 
     fig_location.update_layout(
-        template="plotly_white"
+        template="plotly_white",
+        xaxis_tickangle=-45
     )
 
     st.plotly_chart(
@@ -696,6 +808,8 @@ if (
     and "total_spent" in filtered_df.columns
 ):
 
+    st.subheader("Daily Sales Trend")
+
     daily_sales = (
         filtered_df
         .dropna(subset=["transaction_date"])
@@ -735,7 +849,7 @@ if (
 
 
 # ============================================================
-# TRANSACTION AMOUNT DISTRIBUTION
+# TRANSACTION AMOUNT ANALYSIS
 # ============================================================
 
 if "total_spent" in filtered_df.columns:
@@ -743,6 +857,7 @@ if "total_spent" in filtered_df.columns:
     st.subheader("Transaction Amount Analysis")
 
     col1, col2 = st.columns(2)
+
 
     with col1:
 
@@ -764,6 +879,7 @@ if "total_spent" in filtered_df.columns:
             fig_hist,
             use_container_width=True
         )
+
 
     with col2:
 
@@ -795,8 +911,17 @@ if (
     and "total_spent" in filtered_df.columns
 ):
 
+    st.subheader("Quantity vs Total Spending")
+
+    scatter_df = filtered_df.dropna(
+        subset=[
+            "quantity",
+            "total_spent"
+        ]
+    )
+
     fig_scatter = px.scatter(
-        filtered_df,
+        scatter_df,
         x="quantity",
         y="total_spent",
         title="Quantity vs Total Spending",
@@ -804,7 +929,15 @@ if (
             "quantity": "Quantity",
             "total_spent": "Total Spending"
         },
-        trendline="ols"
+        hover_data=[
+            column
+            for column in [
+                "item",
+                "payment_method",
+                "location"
+            ]
+            if column in scatter_df.columns
+        ]
     )
 
     fig_scatter.update_layout(
@@ -826,15 +959,33 @@ if (
     and "quantity" in filtered_df.columns
 ):
 
+    st.subheader("Price per Unit vs Quantity")
+
+    price_quantity_df = filtered_df.dropna(
+        subset=[
+            "price_per_unit",
+            "quantity"
+        ]
+    )
+
     fig_price_quantity = px.scatter(
-        filtered_df,
+        price_quantity_df,
         x="price_per_unit",
         y="quantity",
         title="Price per Unit vs Quantity",
         labels={
             "price_per_unit": "Price per Unit",
             "quantity": "Quantity"
-        }
+        },
+        hover_data=[
+            column
+            for column in [
+                "item",
+                "payment_method",
+                "location"
+            ]
+            if column in price_quantity_df.columns
+        ]
     )
 
     fig_price_quantity.update_layout(
@@ -863,7 +1014,7 @@ if not correlation_df.empty:
 
     fig_corr = px.imshow(
         correlation_df,
-        text_auto=True,
+        text_auto=".2f",
         aspect="auto",
         title="Correlation Heatmap"
     )
@@ -875,6 +1026,14 @@ if not correlation_df.empty:
     st.plotly_chart(
         fig_corr,
         use_container_width=True
+
+    )
+
+else:
+
+    st.info(
+        "There are not enough numeric columns "
+        "for correlation analysis."
     )
 
 
@@ -886,55 +1045,65 @@ if "total_spent" in filtered_df.columns:
 
     st.subheader("Outlier Analysis")
 
-    q1 = filtered_df[
+    outlier_data = filtered_df[
         "total_spent"
-    ].quantile(0.25)
+    ].dropna()
 
-    q3 = filtered_df[
-        "total_spent"
-    ].quantile(0.75)
+    if not outlier_data.empty:
 
-    iqr = q3 - q1
+        q1 = outlier_data.quantile(0.25)
 
-    lower_limit = q1 - 1.5 * iqr
-    upper_limit = q3 + 1.5 * iqr
+        q3 = outlier_data.quantile(0.75)
 
-    outliers = filtered_df[
-        (
-            filtered_df["total_spent"]
-            < lower_limit
-        )
-        |
-        (
-            filtered_df["total_spent"]
-            > upper_limit
-        )
-    ]
+        iqr = q3 - q1
 
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.metric(
-            "Q1",
-            f"{q1:,.2f}"
+        lower_limit = (
+            q1 - 1.5 * iqr
         )
 
-    with col2:
-        st.metric(
-            "Q3",
-            f"{q3:,.2f}"
+        upper_limit = (
+            q3 + 1.5 * iqr
         )
 
-    with col3:
-        st.metric(
-            "Number of Outliers",
-            f"{len(outliers):,}"
-        )
+        outliers = filtered_df[
+            (
+                filtered_df["total_spent"]
+                < lower_limit
+            )
+            |
+            (
+                filtered_df["total_spent"]
+                > upper_limit
+            )
+        ]
 
-    st.dataframe(
-        outliers,
-        use_container_width=True
-    )
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+
+            st.metric(
+                "Q1",
+                f"{q1:,.2f}"
+            )
+
+        with col2:
+
+            st.metric(
+                "Q3",
+                f"{q3:,.2f}"
+            )
+
+        with col3:
+
+            st.metric(
+                "Number of Outliers",
+                f"{len(outliers):,}"
+            )
+
+        st.dataframe(
+            outliers,
+            use_container_width=True
+        )
 
 
 # ============================================================
@@ -947,6 +1116,7 @@ if "total_spent" in filtered_df.columns:
 
     top_transactions = (
         filtered_df
+        .dropna(subset=["total_spent"])
         .sort_values(
             "total_spent",
             ascending=False
@@ -1007,9 +1177,14 @@ if (
 
 st.subheader("Download Data")
 
-csv_data = filtered_df.to_csv(
-    index=False
-).encode("utf-8")
+
+# Filtered dataset
+
+csv_data = (
+    filtered_df
+    .to_csv(index=False)
+    .encode("utf-8")
+)
 
 st.download_button(
     label="Download Filtered Data",
@@ -1019,9 +1194,13 @@ st.download_button(
 )
 
 
-original_csv = df.to_csv(
-    index=False
-).encode("utf-8")
+# Cleaned original dataset
+
+original_csv = (
+    df
+    .to_csv(index=False)
+    .encode("utf-8")
+)
 
 st.download_button(
     label="Download Cleaned Dataset",
