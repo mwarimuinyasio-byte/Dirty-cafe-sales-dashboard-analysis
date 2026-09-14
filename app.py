@@ -1069,4 +1069,3 @@ st.markdown("---")
 st.markdown(
     "Financial Transactions Data Analysis Dashboard"
 )
-```
