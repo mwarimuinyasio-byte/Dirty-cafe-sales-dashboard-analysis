@@ -11,7 +11,6 @@ from pathlib import Path
 
 st.set_page_config(
     page_title="Dirty Cafe Sales Dashboard",
-    page_icon="☕",
     layout="wide"
 )
 
@@ -21,32 +20,39 @@ st.set_page_config(
 # ============================================================
 
 st.title("Dirty Cafe Sales Dashboard")
+
 st.write(
     "Interactive sales data analysis and visualization dashboard."
 )
 
 
 # ============================================================
-# LOAD DATA
+# FILE PATH
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
+
 DATA_FILE = BASE_DIR / "dirty_cafe_sales.csv"
 
+
+# ============================================================
+# LOAD DATA
+# ============================================================
 
 @st.cache_data
 def load_data():
 
-    if not DATA_FILE.exists():
+    if DATA_FILE.exists():
 
-        csv_files = list(BASE_DIR.glob("*.csv"))
+        return pd.read_csv(DATA_FILE)
 
-        if not csv_files:
-            return None
+    csv_files = list(BASE_DIR.glob("*.csv"))
+
+    if len(csv_files) > 0:
 
         return pd.read_csv(csv_files[0])
 
-    return pd.read_csv(DATA_FILE)
+    return None
 
 
 try:
@@ -55,19 +61,20 @@ try:
 
 except Exception as e:
 
-    st.error(f"Error loading the dataset: {e}")
+    st.error(f"Error loading CSV file: {e}")
+
     st.stop()
 
 
 if df is None:
 
     st.error(
-        "The CSV file was not found."
+        "dirty_cafe_sales.csv was not found."
     )
 
-    st.write(
-        "Make sure 'dirty_cafe_sales.csv' is in the same "
-        "folder as app.py."
+    st.info(
+        "Make sure dirty_cafe_sales.csv is uploaded "
+        "to the same GitHub repository as app.py."
     )
 
     st.stop()
@@ -111,7 +118,7 @@ df = df.replace(invalid_values, np.nan)
 
 
 # ============================================================
-# DATA CLEANING
+# CONVERT NUMERIC COLUMNS
 # ============================================================
 
 numeric_columns = [
@@ -139,7 +146,7 @@ for column in numeric_columns:
 
 
 # ============================================================
-# DATE CLEANING
+# CONVERT DATE
 # ============================================================
 
 if "transaction_date" in df.columns:
@@ -177,7 +184,7 @@ if (
 
 
 # ============================================================
-# DATE FEATURES
+# CREATE DATE FEATURES
 # ============================================================
 
 if "transaction_date" in df.columns:
@@ -204,7 +211,7 @@ if "transaction_date" in df.columns:
 
 
 # ============================================================
-# SIDEBAR FILTERS
+# SIDEBAR
 # ============================================================
 
 st.sidebar.header("Dashboard Filters")
@@ -354,7 +361,7 @@ if (
 
 
 # ============================================================
-# CHECK FILTERED DATA
+# EMPTY DATA CHECK
 # ============================================================
 
 if filtered_df.empty:
@@ -375,8 +382,6 @@ st.subheader("Key Performance Indicators")
 col1, col2, col3, col4 = st.columns(4)
 
 
-# Total transactions
-
 with col1:
 
     st.metric(
@@ -384,8 +389,6 @@ with col1:
         f"{len(filtered_df):,}"
     )
 
-
-# Total revenue
 
 with col2:
 
@@ -409,8 +412,6 @@ with col2:
         )
 
 
-# Average transaction
-
 with col3:
 
     if "total_spent" in filtered_df.columns:
@@ -432,8 +433,6 @@ with col3:
             "N/A"
         )
 
-
-# Total quantity
 
 with col4:
 
@@ -527,7 +526,7 @@ with tab4:
 
 
 # ============================================================
-# MISSING VALUE ANALYSIS
+# MISSING VALUES
 # ============================================================
 
 st.subheader("Missing Value Analysis")
@@ -675,7 +674,7 @@ if (
 
 
 # ============================================================
-# PAYMENT METHOD ANALYSIS
+# PAYMENT METHOD
 # ============================================================
 
 if "payment_method" in filtered_df.columns:
@@ -757,7 +756,7 @@ if (
 
 
 # ============================================================
-# MONTHLY SALES TREND
+# MONTHLY SALES
 # ============================================================
 
 if (
@@ -928,16 +927,7 @@ if (
         labels={
             "quantity": "Quantity",
             "total_spent": "Total Spending"
-        },
-        hover_data=[
-            column
-            for column in [
-                "item",
-                "payment_method",
-                "location"
-            ]
-            if column in scatter_df.columns
-        ]
+        }
     )
 
     fig_scatter.update_layout(
@@ -976,16 +966,7 @@ if (
         labels={
             "price_per_unit": "Price per Unit",
             "quantity": "Quantity"
-        },
-        hover_data=[
-            column
-            for column in [
-                "item",
-                "payment_method",
-                "location"
-            ]
-            if column in price_quantity_df.columns
-        ]
+        }
     )
 
     fig_price_quantity.update_layout(
@@ -1032,8 +1013,7 @@ if not correlation_df.empty:
 else:
 
     st.info(
-        "There are not enough numeric columns "
-        "for correlation analysis."
+        "Not enough numeric columns for correlation analysis."
     )
 
 
@@ -1045,25 +1025,21 @@ if "total_spent" in filtered_df.columns:
 
     st.subheader("Outlier Analysis")
 
-    outlier_data = filtered_df[
+    values = filtered_df[
         "total_spent"
     ].dropna()
 
-    if not outlier_data.empty:
+    if not values.empty:
 
-        q1 = outlier_data.quantile(0.25)
+        q1 = values.quantile(0.25)
 
-        q3 = outlier_data.quantile(0.75)
+        q3 = values.quantile(0.75)
 
         iqr = q3 - q1
 
-        lower_limit = (
-            q1 - 1.5 * iqr
-        )
+        lower_limit = q1 - 1.5 * iqr
 
-        upper_limit = (
-            q3 + 1.5 * iqr
-        )
+        upper_limit = q3 + 1.5 * iqr
 
         outliers = filtered_df[
             (
@@ -1131,7 +1107,7 @@ if "total_spent" in filtered_df.columns:
 
 
 # ============================================================
-# SUMMARY BY ITEM
+# ITEM SUMMARY
 # ============================================================
 
 if (
@@ -1178,9 +1154,7 @@ if (
 st.subheader("Download Data")
 
 
-# Filtered dataset
-
-csv_data = (
+filtered_csv = (
     filtered_df
     .to_csv(index=False)
     .encode("utf-8")
@@ -1188,15 +1162,13 @@ csv_data = (
 
 st.download_button(
     label="Download Filtered Data",
-    data=csv_data,
+    data=filtered_csv,
     file_name="dirty_cafe_sales_filtered.csv",
     mime="text/csv"
 )
 
 
-# Cleaned original dataset
-
-original_csv = (
+cleaned_csv = (
     df
     .to_csv(index=False)
     .encode("utf-8")
@@ -1204,7 +1176,7 @@ original_csv = (
 
 st.download_button(
     label="Download Cleaned Dataset",
-    data=original_csv,
+    data=cleaned_csv,
     file_name="dirty_cafe_sales_cleaned.csv",
     mime="text/csv"
 )
