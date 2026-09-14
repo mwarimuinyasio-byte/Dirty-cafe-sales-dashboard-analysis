@@ -10,7 +10,6 @@ import plotly.express as px
 
 st.set_page_config(
     page_title="Dirty Cafe Sales Dashboard",
-    page_icon="☕",
     layout="wide"
 )
 
